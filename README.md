@@ -29,7 +29,7 @@ Then parse it using flask_extractor.py
 
 ```
 python3 flask_extractor.py -f <.dmp -m somedmp.maps -c <cookie>
-
+```
 ## TODO
 Currently is only able to extract secret keys if they are a byte string. Should support normal strings as well
 
