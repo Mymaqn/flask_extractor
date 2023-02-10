@@ -28,7 +28,7 @@ Eg. output file prefix "abcd" will generate a file called "abcd.dmp" and "abcd.m
 Then parse it using flask_extractor.py
 
 ```
-python3 flask_extractor.py -f <.dmp -m somedmp.maps -c <cookie>
+python3 flask_extractor.py -f <.dmp file> -m <.maps file> -c <A valid session cookie>
 ```
 ## TODO
 Currently is only able to extract secret keys if they are a byte string. Should support normal strings as well
