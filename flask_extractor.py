@@ -220,6 +220,26 @@ def extract_secret_from_sections_strings(dmp_file, PyUnicode_Type_addr, cookie, 
 
     return secret_key
 
+def get_session_cookie_from_dump(dmp_file):
+    with open(dmp_file,"rb") as f:
+        dmp_file_contents = f.read()
+    
+    all_session_refs = list(find_all(dmp_file_contents,b'session='))
+    possible_session_cookies = []
+
+    for ref in all_session_refs:
+        end = ref + dmp_file_contents[ref:].find(b'\x00')
+        to_handle = dmp_file_contents[ref:end]
+        if len(to_handle) == len(b'session='):
+            continue
+        if len(to_handle.split(b'.')) < 3:
+            continue
+        semicolon_idx = to_handle.find(b';')
+        if semicolon_idx == -1:
+            continue
+        
+        possible_session_cookies.append(to_handle[len(b'session='):semicolon_idx])
+    return possible_session_cookies
 
 
 #TODO: Make finding a cookie from the dump a possibility
@@ -227,9 +247,9 @@ def extract_secret_from_sections_strings(dmp_file, PyUnicode_Type_addr, cookie, 
 parser = argparse.ArgumentParser(prog = 'flask_extractor', description = 'Gets the secret key of a specified length from a memory dump from flask_dumper')
 parser.add_argument("-f","--dmpfile",type=str,help=".dmp file to extract from",required=True)
 parser.add_argument("-m","--mapsfile",type=str,help=".maps file to extract from",required=True)
-parser.add_argument("-c","--cookie",type=str,help="Valid session cookie from service",required=True)
-parser.add_argument("-l","--len",type=int,help="Optional. Length of the secret key expected. If none specified the program will try to brute from len 0-256")
-parser.add_argument("-t","--type",type=str,help="Optional. Whether the type of the key is a string or bytes object. If none specified will try to brute force both types. Possible values. 'bytes' 'str'")
+parser.add_argument("-c","--cookie",type=str,help="Optional. Valid session cookie from service. If none specified, the extractor will try to use one it may be able to find from the dump")
+parser.add_argument("-l","--len",type=int,help="Optional. Length of the secret key expected. If none specified the program will try to brute from len 0-256. Setting this value, significantly speeds up the process")
+parser.add_argument("-t","--type",type=str,help="Optional. Whether the type of the key is a string or bytes object. If none specified will try to brute force both types. Possible values. 'bytes' 'str'. Setting this values significantly speeds up the process")
 
 
 args = parser.parse_args()
@@ -239,6 +259,16 @@ with open(args.mapsfile,"r") as fd:
     maps = fd.readlines()
 p_to_f_obj = create_page_to_file_offsets(maps)
 
+cookie = args.cookie
+if cookie == None:
+    pprint("No cookie specified, trying to find one in the .dmp file")
+    cookies = get_session_cookie_from_dump(dmp_file)
+    if len(cookies)!=0:
+        pprint(f"Found cookie: {cookies[0].decode('UTF-8')}")
+        cookie = cookies[0].decode("UTF-8")
+    else:
+        pprint("Unable to find cookie from memory dump")
+        exit(1)
 
 #find the entry for the first read-writable page and the base address of the dump
 first_rw = [x for x in p_to_f_obj if x["prots"] == "rw-p"][0]
@@ -269,37 +299,41 @@ pprint(f"PyUnicode_Type_addr: {PyUnicode_Type_addr:#x}")
 
 if args.len == None:
     if args.type == None:
-        for i in range(0,256):
+        for i in range(1,256):
             pprint(f"Trying to extract from bytes with len {i}")
-            secret_key = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,args.cookie,i)
+            secret_key = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,cookie,i)
             if secret_key != None:
                 pprint("Found secret key:")
                 pprint(secret_key)
+                exit(0)
                 break
-        for i in range(0,256):
+        for i in range(1,256):
             pprint(f"Trying to extract from str with len {i}")
-            secret_key = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,args.cookie,i)
+            secret_key = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,cookie,i)
             if secret_key != None:
                 pprint("Found secret key:")
                 pprint(secret_key)
+                exit(0)
                 break
     
     if args.type == "bytes":
-        for i in range(0,256):
+        for i in range(1,256):
             pprint(f"Trying to extract from bytes with len {i}")
-            secret_key = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,args.cookie,i)
+            secret_key = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,cookie,i)
             if secret_key != None:
                 pprint("Found secret key:")
                 pprint(secret_key)
+                exit(0)
                 break
     
     if args.type == "str":
-        for i in range(0,256):
+        for i in range(1,256):
             pprint(f"Trying to extract from str with len {i}")
-            secret_key = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,args.cookie,i)
+            secret_key = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,cookie,i)
             if secret_key != None:
                 pprint("Found secret key:")
                 pprint(secret_key)
+                exit(0)
                 break
 
     if secret_key == None:
@@ -308,18 +342,18 @@ if args.len == None:
 else:
     secret_key = None
     if args.type == None:
-        secret_key_1 = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,args.cookie,args.len)
-        secret_key_2 = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,args.cookie,args.len)
+        secret_key_1 = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,cookie,args.len)
+        secret_key_2 = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,cookie,args.len)
         if secret_key_1 != None:
             secret_key = secret_key_1
         elif secret_key_2 != None:
             secret_key = secret_key_2
     
     elif args.type == "bytes":
-        secret_key = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,args.cookie,args.len)
+        secret_key = extract_secret_from_sections_bytes(args.dmpfile,PyBytes_Type_addr,cookie,args.len)
     
     elif args.type == "str":
-        secret_key = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,args.cookie,args.len)
+        secret_key = extract_secret_from_sections_strings(args.dmpfile,PyUnicode_Type_addr,cookie,args.len)
     
     if secret_key == None:
         pprint("Failed finding secret key")
